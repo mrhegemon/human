@@ -4,10 +4,14 @@ import Menu from './menu.js';
 import GLBench from './gl-bench.js';
 
 const userConfig = {}; // add any user configuration overrides
+
 /*
 const userConfig = {
-  face: { enabled: false },
-  body: { enabled: true },
+  // backend: 'humangl',
+  async: false,
+  videoOptimized: false,
+  face: { enabled: true, detector: { modelPath: '../models/faceboxes.json' }, iris: { enabled: false }, mesh: { enabled: false }, age: { enabled: false }, gender: { enabled: false }, emotion: { enabled: true } },
+  body: { enabled: false },
   hand: { enabled: false },
 };
 */
@@ -219,7 +223,7 @@ async function setupCamera() {
       // silly font resizing for paint-on-canvas since viewport can be zoomed
       const size = Math.trunc(window.devicePixelRatio * (8 + (4 * canvas.width / window.innerWidth)));
       ui.baseFont = ui.baseFontProto.replace(/{size}/, `${size}px`);
-      ui.baseLineHeight = size + 4;
+      ui.baseLineHeight = size + 2;
       if (live) video.play();
       // eslint-disable-next-line no-use-before-define
       if (live && !ui.detectThread) runHumanDetect(video, canvas);
@@ -252,7 +256,6 @@ function webWorker(input, image, canvas, timestamp) {
     // create new webworker and add event handler only once
     log('creating worker thread');
     worker = new Worker(ui.worker, { type: 'module' });
-    console.log('worker', worker);
     // after receiving message from webworker, parse&draw results and send new frame for processing
     worker.addEventListener('message', (msg) => {
       if (msg.data.result.performance && msg.data.result.performance.total) ui.detectFPS.push(1000 / msg.data.result.performance.total);
@@ -412,8 +415,14 @@ function setupMenu() {
   menu.display = new Menu(document.body, '', { top: `${document.getElementById('menubar').offsetHeight}px`, left: x[0] });
   menu.display.addBool('perf monitor', ui, 'bench', (val) => ui.bench = val);
   menu.display.addBool('buffered output', ui, 'buffered', (val) => ui.buffered = val);
-  menu.display.addBool('crop & scale', ui, 'crop', () => setupCamera());
-  menu.display.addBool('camera facing', ui, 'facing', () => setupCamera());
+  menu.display.addBool('crop & scale', ui, 'crop', (val) => {
+    ui.crop = val;
+    setupCamera();
+  });
+  menu.display.addBool('camera facing', ui, 'facing', (val) => {
+    ui.facing = val;
+    setupCamera();
+  });
   menu.display.addHTML('<hr style="border-style: inset; border-color: dimgray">');
   menu.display.addBool('use 3D depth', ui, 'useDepth');
   menu.display.addBool('draw boxes', ui, 'drawBoxes');
@@ -422,7 +431,7 @@ function setupMenu() {
   menu.display.addBool('draw points', ui, 'drawPoints');
 
   menu.image = new Menu(document.body, '', { top: `${document.getElementById('menubar').offsetHeight}px`, left: x[1] });
-  menu.image.addBool('enabled', human.config.filter, 'enabled');
+  menu.image.addBool('enabled', human.config.filter, 'enabled', (val) => human.config.filter.enabled = val);
   ui.menuWidth = menu.image.addRange('image width', human.config.filter, 'width', 0, 3840, 10, (val) => human.config.filter.width = parseInt(val));
   ui.menuHeight = menu.image.addRange('image height', human.config.filter, 'height', 0, 2160, 10, (val) => human.config.filter.height = parseInt(val));
   menu.image.addHTML('<hr style="border-style: inset; border-color: dimgray">');
@@ -434,12 +443,12 @@ function setupMenu() {
   menu.image.addRange('hue', human.config.filter, 'hue', 0, 360, 5, (val) => human.config.filter.hue = parseInt(val));
   menu.image.addRange('pixelate', human.config.filter, 'pixelate', 0, 32, 1, (val) => human.config.filter.pixelate = parseInt(val));
   menu.image.addHTML('<hr style="border-style: inset; border-color: dimgray">');
-  menu.image.addBool('negative', human.config.filter, 'negative');
-  menu.image.addBool('sepia', human.config.filter, 'sepia');
-  menu.image.addBool('vintage', human.config.filter, 'vintage');
-  menu.image.addBool('kodachrome', human.config.filter, 'kodachrome');
-  menu.image.addBool('technicolor', human.config.filter, 'technicolor');
-  menu.image.addBool('polaroid', human.config.filter, 'polaroid');
+  menu.image.addBool('negative', human.config.filter, 'negative', (val) => human.config.filter.negative = val);
+  menu.image.addBool('sepia', human.config.filter, 'sepia', (val) => human.config.filter.sepia = val);
+  menu.image.addBool('vintage', human.config.filter, 'vintage', (val) => human.config.filter.vintage = val);
+  menu.image.addBool('kodachrome', human.config.filter, 'kodachrome', (val) => human.config.filter.kodachrome = val);
+  menu.image.addBool('technicolor', human.config.filter, 'technicolor', (val) => human.config.filter.technicolor = val);
+  menu.image.addBool('polaroid', human.config.filter, 'polaroid', (val) => human.config.filter.polaroid = val);
 
   menu.process = new Menu(document.body, '', { top: `${document.getElementById('menubar').offsetHeight}px`, left: x[2] });
   menu.process.addList('backend', ['cpu', 'webgl', 'wasm', 'humangl'], human.config.backend, (val) => human.config.backend = val);
@@ -485,21 +494,21 @@ function setupMenu() {
   menu.process.addChart('FPS', 'FPS');
 
   menu.models = new Menu(document.body, '', { top: `${document.getElementById('menubar').offsetHeight}px`, left: x[3] });
-  menu.models.addBool('face detect', human.config.face, 'enabled');
-  menu.models.addBool('face mesh', human.config.face.mesh, 'enabled');
-  menu.models.addBool('face iris', human.config.face.iris, 'enabled');
-  menu.models.addBool('face age', human.config.face.age, 'enabled');
-  menu.models.addBool('face gender', human.config.face.gender, 'enabled');
-  menu.models.addBool('face emotion', human.config.face.emotion, 'enabled');
+  menu.models.addBool('face detect', human.config.face, 'enabled', (val) => human.config.face.enabled = val);
+  menu.models.addBool('face mesh', human.config.face.mesh, 'enabled', (val) => human.config.face.mesh.enabled = val);
+  menu.models.addBool('face iris', human.config.face.iris, 'enabled', (val) => human.config.face.iris.enabled = val);
+  menu.models.addBool('face age', human.config.face.age, 'enabled', (val) => human.config.face.age.enabled = val);
+  menu.models.addBool('face gender', human.config.face.gender, 'enabled', (val) => human.config.face.gender.enabled = val);
+  menu.models.addBool('face emotion', human.config.face.emotion, 'enabled', (val) => human.config.face.emotion.enabled = val);
   menu.models.addHTML('<hr style="border-style: inset; border-color: dimgray">');
-  menu.models.addBool('body pose', human.config.body, 'enabled');
-  menu.models.addBool('hand pose', human.config.hand, 'enabled');
+  menu.models.addBool('body pose', human.config.body, 'enabled', (val) => human.config.body.enabled = val);
+  menu.models.addBool('hand pose', human.config.hand, 'enabled', (val) => human.config.hand.enabled = val);
   menu.models.addHTML('<hr style="border-style: inset; border-color: dimgray">');
-  menu.models.addBool('gestures', human.config.gesture, 'enabled');
+  menu.models.addBool('gestures', human.config.gesture, 'enabled', (val) => human.config.gesture.enabled = val);
   menu.models.addHTML('<hr style="border-style: inset; border-color: dimgray">');
   menu.models.addBool('face compare', human.config.face.embedding, 'enabled', (val) => {
-    original = null;
     human.config.face.embedding.enabled = val;
+    original = null;
   });
 
   document.getElementById('btnDisplay').addEventListener('click', (evt) => menu.display.toggle(evt));
@@ -511,7 +520,8 @@ function setupMenu() {
 }
 
 async function main() {
-  log('demo starting ...');
+  log('Demo starting ...');
+  log('Browser:', navigator?.userAgent);
   setupMenu();
   document.getElementById('log').innerText = `Human: version ${human.version}`;
   if (ui.modelsPreload && !ui.useWorker) {
@@ -525,7 +535,7 @@ async function main() {
   status('human: ready');
   document.getElementById('loader').style.display = 'none';
   document.getElementById('play').style.display = 'block';
-  log('ready');
+  log('Demo ready...');
 }
 
 window.onload = main;

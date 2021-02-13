@@ -52,6 +52,14 @@ const mime = {
   '.wasm': 'application/wasm',
 };
 
+let last = Date.now();
+async function buildAll(evt, msg) {
+  const now = Date.now();
+  if ((now - last) > 2) build.build(evt, msg);
+  else log.state('Build: merge event file', msg, evt);
+  last = now;
+}
+
 // watch filesystem for any changes and notify build when needed
 async function watch() {
   const watcher = chokidar.watch(options.monitor, {
@@ -66,9 +74,9 @@ async function watch() {
   });
   // single event handler for file add/change/delete
   watcher
-    .on('add', (evt) => build.build(evt, 'add'))
-    .on('change', (evt) => build.build(evt, 'modify'))
-    .on('unlink', (evt) => build.build(evt, 'remove'))
+    .on('add', (evt) => buildAll(evt, 'add'))
+    .on('change', (evt) => buildAll(evt, 'modify'))
+    .on('unlink', (evt) => buildAll(evt, 'remove'))
     .on('error', (err) => log.error(`Client watcher error: ${err}`))
     .on('ready', () => log.state('Monitoring:', options.monitor));
 }
@@ -83,6 +91,7 @@ function handle(url) {
     if (obj.stat.isFile()) obj.ok = true;
     if (!obj.ok && obj.stat.isDirectory()) {
       obj.file = path.join(obj.file, options.default);
+      // @ts-ignore
       obj = handle(obj.file);
     }
     resolve(obj);
@@ -130,6 +139,7 @@ async function httpRequest(req, res) {
 async function main() {
   log.header();
   await watch();
+  // @ts-ignore
   const server1 = http.createServer(options, httpRequest);
   server1.on('listening', () => log.state('HTTP server listening:', options.httpPort));
   server1.listen(options.httpPort);

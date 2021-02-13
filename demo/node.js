@@ -6,12 +6,15 @@ const tf = require('@tensorflow/tfjs-node'); // or const tf = require('@tensorfl
 // load specific version of Human library that matches TensorFlow mode
 const Human = require('../dist/human.node.js').default; // or const Human = require('../dist/human.node-gpu.js').default;
 
+let human = null;
+
 const myConfig = {
   backend: 'tensorflow',
   console: true,
   videoOptimized: false,
+  async: false,
   face: {
-    detector: { modelPath: 'file://models/blazeface-back.json' },
+    detector: { modelPath: 'file://models/faceboxes.json' }, // cannot use blazeface in nodejs due to missing required kernel function in tfjs-node
     mesh: { modelPath: 'file://models/facemesh.json' },
     iris: { modelPath: 'file://models/iris.json' },
     age: { modelPath: 'file://models/age-ssrnet-imdb.json' },
@@ -25,13 +28,16 @@ const myConfig = {
   },
 };
 
-async function detect(input) {
+async function init() {
   // wait until tf is ready
   await tf.ready();
   // create instance of human
-  const human = new Human(myConfig);
+  human = new Human(myConfig);
   // pre-load models
   await human.load();
+}
+
+async function detect(input) {
   // read input image file and create tensor to be used for processing
   const buffer = fs.readFileSync(input);
   const decoded = human.tf.node.decodeImage(buffer);
@@ -41,9 +47,6 @@ async function detect(input) {
   casted.dispose();
   // image shape contains image dimensions and depth
   log.state('Processing:', image.shape);
-  // must disable face model when runing in tfjs-node as it's missing required ops
-  // see <https://github.com/tensorflow/tfjs/issues/4066>
-  myConfig.face.enabled = false;
   // run actual detection
   const result = await human.detect(image, myConfig);
   // dispose image tensor as we no longer need it
@@ -52,11 +55,33 @@ async function detect(input) {
   log.data(result);
 }
 
+async function test() {
+  // test with embedded face image
+  log.state('Processing embedded warmup image: face');
+  myConfig.warmup = 'face';
+  const resultFace = await human.warmup(myConfig);
+  log.data('Face: ', resultFace.face);
+
+  // test with embedded full body image
+  log.state('Processing embedded warmup image: full');
+  myConfig.warmup = 'full';
+  const resultFull = await human.warmup(myConfig);
+  log.data('Body:', resultFull.body);
+  log.data('Hand:', resultFull.hand);
+  log.data('Gesture:', resultFull.gesture);
+}
+
 async function main() {
   log.info('NodeJS:', process.version);
-  if (process.argv.length !== 3) log.error('Parameters: <input image>');
-  else if (!fs.existsSync(process.argv[2])) log.error(`File not found: ${process.argv[2]}`);
-  else detect(process.argv[2]);
+  await init();
+  if (process.argv.length !== 3) {
+    log.warn('Parameters: <input image> missing');
+    await test();
+  } else if (!fs.existsSync(process.argv[2])) {
+    log.error(`File not found: ${process.argv[2]}`);
+  } else {
+    await detect(process.argv[2]);
+  }
 }
 
 main();
